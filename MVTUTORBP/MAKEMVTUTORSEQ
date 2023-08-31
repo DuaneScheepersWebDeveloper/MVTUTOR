@@ -1,0 +1,214 @@
+!
+! 2022 Rocket Software, Inc. or its affiliates. All Rights Reserved.
+! ROCKET SOFTWARE, INC. CONFIDENTIAL
+!
+    tcl_stmt = @SENTENCE
+    PROMPT ''
+    file_name = FIELD(tcl_stmt,' ',2)
+    IF NOT(LEN(file_name)) THEN GO USAGE
+    OPEN file_name TO F.DATA ELSE
+        CRT
+        CRT 'No data file "':file_name:'"'
+        CRT
+        GO USAGE
+    END
+    OPEN 'DICT', file_name TO F.DICT ELSE
+        CRT
+        CRT 'No dict file "':file_name:'"'
+        CRT
+        GO USAGE
+    END
+    dict_tab_file = file_name:'_dict.tab'
+    data_tab_file = file_name:'_data.tab'
+    platform = SYSTEM(9010)
+    BEGIN CASE
+        CASE platform = 'UD'
+            OPEN 'VOC' TO F.VOC ELSE
+                CRT
+                CRT 'Cannot open VOC'
+                CRT
+                ABORT
+            END
+            R.VOC = 'DIR'
+            R.VOC<2> = '.'
+            R.VOC<3> = 'D_VOC'
+            WRITE R.VOC ON F.VOC,'MVTUTOR_CUR_DIR'
+            OPEN 'MVTUTOR_CUR_DIR' TO F.CUR_DIR ELSE
+                CRT
+                CRT 'Cannot open MVTUTOR_CUR_DIR (current directory)'
+                CRT
+                ABORT
+            END
+        CASE platform = 'UV'
+            OPEN 'VOC' TO F.VOC ELSE
+                CRT
+                CRT 'Cannot open VOC'
+                CRT
+                ABORT
+            END
+            R.VOC = 'F'
+            R.VOC<2> = '.'
+            R.VOC<3> = 'D_VOC'
+            WRITE R.VOC ON F.VOC,'MVTUTOR_CUR_DIR'
+            OPEN 'MVTUTOR_CUR_DIR' TO F.CUR_DIR ELSE
+                CRT
+                CRT 'Cannot open MVTUTOR_CUR_DIR (current directory)'
+                CRT
+                ABORT
+            END
+        CASE platform = 'JBASE'
+            OPEN '.' TO F.CUR_DIR ELSE
+                CRT
+                CRT 'Cannot open MVTUTOR_CUR_DIR (current directory)'
+                CRT
+                ABORT
+            END
+        CASE 1
+            CRT
+            CRT 'SYSTEM(9010) = "':SYSTEM(9010):'".  Not supported.'
+            CRT
+            ABORT
+    END CASE
+    DELETE F.CUR_DIR,dict_tab_file
+    WRITE '' ON F.CUR_DIR,dict_tab_file
+    OPENSEQ dict_tab_file TO F.DICTSEQ ELSE
+        CRT
+        CRT 'Cannot open ':dict_tab_file
+        CRT
+        ABORT
+    END
+    date_fields = '' ; last_date = 0
+    CRT 'Creating ':dict_tab_file:' ...'
+    write_count = 0
+    SELECT F.DICT
+    LOOP
+        READNEXT id ELSE EXIT
+        READ R.ITEM FROM F.DICT,id THEN
+            IF R.ITEM<3>[1,1] = 'D' AND R.ITEM<2> MATCHES '1N0N' THEN
+                last_date += 1
+                date_fields<last_date,1> = R.ITEM<2>        ;* Attribute Number
+                date_fields<last_date,2> = R.ITEM<4>        ;* Description
+            END
+            seq_line = id:@AM:R.ITEM
+            CONVERT @AM TO CHAR(9) IN seq_line
+            CONVERT @VM TO '~' IN seq_line
+            CONVERT @SM TO '`' IN seq_line
+            seq_line = OCONV(seq_line,'G0':CHAR(9):'8') ;* trim compile information
+            IF platform = 'UD' THEN
+                WRITESEQ seq_line APPEND ON F.DICTSEQ ELSE
+                    codes = STATUS()
+                    CRT 'Failed write "':codes:'"'
+                    CRT
+                    ABORT
+                END
+            END ELSE
+                WRITESEQ seq_line ON F.DICTSEQ ELSE
+                    codes = STATUS()
+                    CRT 'Failed write "':codes:'"'
+                    CRT
+                    ABORT
+                END
+            END
+            write_count += 1
+            CRT @(0):write_count:
+        END
+    REPEAT
+    CRT
+    CLOSE F.DICTSEQ
+*
+    IF last_date THEN
+        FOR date_count = last_date TO 1 STEP -1
+            date_prompt = date_fields<date_count,2>
+            CONVERT @VM TO ' ' IN date_prompt
+            LOOP
+                CRT date_prompt
+                CRT 'Enter year if you want to update them to a specific year : ':
+                INPUT year
+            UNTIL year = '' OR year MATCHES '2N' OR year MATCHES '4N' DO
+            REPEAT
+            IF year = '' THEN
+                DEL date_fields<date_count>
+                last_date -= 1
+            END ELSE
+                date_fields<date_count,3> = year
+            END
+        NEXT date_count
+    END
+    DELETE F.CUR_DIR,data_tab_file
+    WRITE '' ON F.CUR_DIR,data_tab_file
+    OPENSEQ data_tab_file TO F.DATASEQ ELSE
+        CRT
+        CRT 'Cannot open ':data_tab_file
+        CRT
+        ABORT
+    END
+    CRT 'Creating ':data_tab_file:' ...'
+    SELECT F.DATA
+    write_count = 0
+    LOOP
+        READNEXT id ELSE EXIT
+        READ R.ITEM FROM F.DATA,id THEN
+            IF last_date THEN
+                FOR date_count = 1 TO last_date
+                    attribute = date_fields<date_count,1>
+                    new_year = date_fields<date_count,3>
+                    current_dates = R.ITEM<attribute>
+                    last_value = DCOUNT(current_dates,@VM)
+                    FOR value_count = 1 TO last_value
+                        oconv_date = OCONV(current_dates<1,value_count>,'D2/')
+                        new_date = ICONV(oconv_date[1,5]:'/':new_year,'D')
+                        current_dates<1,value_count> = new_date
+                    NEXT value_count
+                    R.ITEM<attribute> = current_dates
+                NEXT date_count
+            END
+            seq_line = id:@AM:R.ITEM
+            CONVERT @AM TO CHAR(9) IN seq_line
+            CONVERT @VM TO '~' IN seq_line
+            CONVERT @SM TO '`' IN seq_line
+            IF platform = 'UD' THEN
+                WRITESEQ seq_line APPEND ON F.DATASEQ ELSE
+                    codes = STATUS()
+                    CRT 'Failed write "':codes:'"'
+                    CRT
+                    ABORT
+                END
+            END ELSE
+                WRITESEQ seq_line ON F.DATASEQ ELSE
+                    codes = STATUS()
+                    CRT 'Failed write "':codes:'"'
+                    CRT
+                    ABORT
+                END
+            END
+            write_count += 1
+            CRT @(0):write_count:
+        END
+    REPEAT
+    CLOSE F.DATASEQ
+    CRT
+*
+*** Exit program
+*
+    STOP
+*
+USAGE:
+*
+    CRT
+    CRT 'Usage : MAKEMVTUTORSEQ filename'
+    CRT
+    CRT 'filename must be a valid data file.'
+    CRT
+    CRT 'This process will create a .tab file of the dict and data portions of'
+    CRT 'filename specified and write them to the current directory.'
+    CRT
+    STOP
+
+
+
+
+
+
+
+
+

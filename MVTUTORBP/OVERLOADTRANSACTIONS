@@ -1,0 +1,39 @@
+    OPEN 'TRANSACTIONS' TO F.TRANSACTIONS ELSE
+        CRT
+        CRT 'Cannot open TRANSACTIONS file'
+        CRT
+        STOP
+    END
+    CRT 'Loading 400,000 more transactions, one dot per 1000 loaded':
+    random_string = ''
+    FOR random_number = 1 TO 1000
+        random_string := RND(9)
+    NEXT random_number
+    FOR transaction_count = 200001 TO 600000
+        IF NOT(MOD(transaction_count,1000)) OR transaction_count = 1 THEN
+            CRT '.':
+        END
+        date          = ICONV('1/1','D') + RND(365)
+        random10      = random_string[RND(990),10]
+        IBAN1         = 'US44BUKD':random10
+        random10      = random_string[RND(990),10]
+        IBAN2         = 'US':(10+RND(85)):'BUKD':random10
+        amount_length = MOD(transaction_count,4) + 2
+        amount        = random_string[RND(800),amount_length]
+        IF amount[1,1] = '0' THEN
+            amount = RND(9)+1:amount[2,999]
+        END
+        description   = 'ORDER ID ':1000 + RND(8999):' CUST ID ':2000 + RND(7999)
+        random16      = random_string[RND(980),16]
+        code          = random16
+*
+        transaction_record    = date
+        transaction_record<2> = IBAN1
+        transaction_record<3> = IBAN2
+        transaction_record<4> = amount
+        transaction_record<5> = description
+        transaction_record<6> = code
+        transaction_id         = (STR('0',10):transaction_count)'R#10'
+        WRITE transaction_record ON F.TRANSACTIONS,transaction_id
+    NEXT transaction_count
+    CRT

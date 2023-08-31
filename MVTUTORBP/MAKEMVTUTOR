@@ -1,0 +1,422 @@
+!
+! 2022 Rocket Software, Inc. or its affiliates. All Rights Reserved.
+! ROCKET SOFTWARE, INC. CONFIDENTIAL
+!
+    tcl_stmt = @SENTENCE
+    IF INDEX(tcl_stmt,'RESET-MVTUTOR',1) THEN
+        reset_flag = 1
+    END ELSE
+        reset_flag = 0
+    END
+    platform = SYSTEM(9010)
+    verbose = 1
+    IF INDEX(tcl_stmt,'VERBOSE',1) THEN
+        verbose = 2
+    END
+    no_stop = @(0,0)          ;* No paging in verbose mode
+    IF verbose THEN
+        CRT
+        CRT 'Running version 1.7 of MAKEMVTUTOR'
+        CRT
+    END
+    IF SYSTEM(2) # 132 OR SYSTEM(3) # 35 THEN
+        CRT 'Executing TERM 132,35 for Tutorial.'
+        EXECUTE 'TERM 132,35'
+    END
+    load_update = 'loaded'
+    PROMPT ''
+*
+*** Set pointer to current directory and open VOC/MD
+*
+    BEGIN CASE
+        CASE platform = 'UV' OR platform = 'UV.PE'
+            EXECUTE 'PTERM CASE NOINVERT'
+            OPEN 'VOC' TO F.VOCMD ELSE
+                CRT
+                CRT 'Cannot open VOC'
+                CRT
+                STOP
+            END
+            CRT
+            R.VOCMD = 'F' ; R.VOCMD<2> = '.' ; R.VOCMD<3> = 'D_VOC'
+            WRITE R.VOCMD ON F.VOCMD,'MVTUTOR_CUR_DIR'
+            R.VOCMD = 'F' ; R.VOCMD<2> = 'CSVFILES' ; R.VOCMD<3> = 'D_VOC'
+            WRITE R.VOCMD ON F.VOCMD,'CSVFILES'
+            mod_sep = ' 18 101'         ;* type 18 modulo of 101
+        CASE platform = 'UD' OR platform = 'UD.PE'
+            OPEN 'VOC' TO F.VOCMD ELSE
+                CRT
+                CRT 'Cannot open VOC'
+                CRT
+                STOP
+            END
+            R.VOCMD = 'DIR' ; R.VOCMD<2> = '.' ; R.VOCMD<3> = 'D_VOC'
+            WRITE R.VOCMD ON F.VOCMD,'MVTUTOR_CUR_DIR'
+            R.VOCMD = 'DIR' ; R.VOCMD<2> = 'CSVFILES' ; R.VOCMD<3> = 'D_VOC'
+            WRITE R.VOCMD ON F.VOCMD,'CSVFILES'
+            mod_sep = ' 19 101'         ;* DICT modulo 19, DATA modulo of 101
+        CASE platform = 'JBASE'
+            OPEN 'MD' TO F.VOCMD ELSE
+                CRT
+                CRT 'Cannot open MD'
+                CRT
+                STOP
+            END
+            R.VOCMD = 'F' ; R.VOCMD<2> = '.' ; R.VOCMD<3> = 'D_VOC'
+            WRITE R.VOCMD ON F.VOCMD,'MVTUTOR_CUR_DIR'
+            mod_sep = ' TYPE=JD'        ;* Dynamic, not needed
+        CASE platform = 'QM'
+            EXECUTE 'PTERM CASE NOINVERT'
+            OPEN 'VOC' TO F.VOCMD ELSE
+                CRT
+                CRT 'Cannot open VOC'
+                CRT
+                STOP
+            END
+            CRT
+            R.VOCMD = 'F' ; R.VOCMD<2> = '.' ; R.VOCMD<3> = '@QMSYS\VOC.DIC'
+            WRITE R.VOCMD ON F.VOCMD,'MVTUTOR_CUR_DIR'
+            R.VOCMD = 'F' ; R.VOCMD<2> = 'CSVFILES' ; R.VOCMD<3> = '@QMSYS\VOC.DIC'
+            WRITE R.VOCMD ON F.VOCMD,'CSVFILES'
+            mod_sep = ''      ;* will create dynamic
+        CASE 1
+            CRT
+            CRT 'Cannot determine plaform with SYSTEM(9010)'
+            CRT 'SYSTEM(9010) = "':SYSTEM(9010):'"'
+            CRT
+            STOP
+    END CASE
+    READ mvtutor_status FROM F.VOCMD,'MVTUTOR_STATUS' THEN
+        BEGIN CASE
+            CASE mvtutor_status = 'new'
+            CASE mvtutor_status = 'in progress'
+                CRT
+                CRT 'Process was in progress and did not complete.'
+                CRT
+                CRT 'Contact Learn@RocketSoftware.com'
+                CRT
+                ABORT
+            CASE mvtutor_status[1,7] = 'loaded ' AND reset_flag
+                load_update = 'updated'
+                CRT
+                CRT 'This process was run ':mvtutor_status[9,99]
+                CRT
+                CRT 'Clearing the files and updating'
+            CASE mvtutor_status[1,8] = 'updated ' AND reset_flag
+                load_update = 'updated'
+                CRT
+                CRT 'This process was updated ':mvtutor_status[10,99]
+                CRT
+                CRT 'Clearing the files and updating again'
+            CASE 1
+                STOP          ;* Only run once
+        END CASE
+    END ELSE
+        CRT
+        CRT 'This account is not an official MVTUTOR shell.'
+        CRT
+        CRT 'This process will extract data files for the MVTUTOR process,'
+        CRT 'and these files are common names like ORDER, CUSTOMER, PRODUCT, etc.'
+        CRT
+        CRT 'Are you sure you want to extract those files here?'
+        CRT
+        CRT 'If you do, and the file already exists, it will CLEAR THESE FILES'
+        CRT 'and update them in this account.'
+        CRT
+        CRT 'Enter OVERRIDE if that is what you want to do : ':
+        INPUT override_ok,8_
+        override_ok = OCONV(override_ok,'MCU')
+        IF override_ok = 'OVERRIDE' THEN
+        END ELSE
+            CRT
+            CRT 'Process aborted!'
+            CRT
+            STOP
+        END
+    END
+    mvtutor_status = 'in progress'
+    WRITE mvtutor_status ON F.VOCMD,'MVTUTOR_STATUS'
+    IF verbose THEN
+        CRT 'Opening current directory to access tab delimited files'
+    END
+    OPEN 'MVTUTOR_CUR_DIR' TO F.CUR.DIR ELSE
+        CRT
+        CRT 'Cannot read current directory via VOC/MD MVTUTOR_CUR_DIR'
+        CRT
+        STOP
+    END
+*
+*** Create lists of data and dict files to extract
+*
+    IF verbose THEN
+        CRT 'Creating lists of data and dict files to extract ...'
+    END
+    data_files = '' ; dict_files = '' ; last_data = 0 ; last_dict = 0
+    select_cmd = 'SSELECT MVTUTOR_CUR_DIR'
+    EXECUTE select_cmd CAPTURING nada
+    IF verbose = 2 THEN
+        CRT nada
+    END
+    LOOP
+        READNEXT tab_file ELSE EXIT
+        tab_file = OCONV(tab_file,'MCU')          ;* QM auto uppercases
+        file_name = FIELD(tab_file,'_',1)
+        suffix = FIELD(tab_file,'_',2)
+        IF verbose = 2 THEN
+            CRT 'file_name = "':file_name:'"'
+            CRT 'suffix        = "':suffix:'"'
+        END
+        BEGIN CASE
+            CASE suffix = 'DICT.TAB'
+                last_dict += 1
+                dict_files<1,last_dict> = file_name
+                IF verbose THEN
+                    CRT SPACE(3):tab_file
+                END
+            CASE suffix = 'DATA.TAB'
+                last_data += 1
+                data_files<1,last_data> = file_name
+                IF verbose THEN
+                    CRT SPACE(3):tab_file
+                END
+            CASE 1
+                CONTINUE
+        END CASE
+    REPEAT
+*
+*** Create files based on lists
+*
+    IF verbose THEN
+        CRT 'Creating files ...'
+    END
+*
+*** Check for DICT only file
+*
+    FOR dict_count = 1 TO last_dict
+        dict_file = dict_files<1,dict_count>
+        IF verbose > 1 THEN
+            CRT SPACE(2):'Checking if ':dict_file:' is in data_file list'
+        END
+        locate_file = @VM:dict_file:@VM
+        locate_data_files = @VM:data_files<1>:@VM
+        IF INDEX(locate_data_files,locate_file,1) THEN
+            IF verbose > 1 THEN
+                CRT SPACE(2):'It is, so skip creating as DICT level only'
+            END
+        END ELSE
+*
+*** DICT only file
+*
+            IF verbose > 1 THEN
+                IF verbose = 2 THEN
+                    pdata_files = data_files<1>
+                    CONVERT @VM TO ']' IN pdata_files
+                    CRT '"':dict_file:'" is not located in ':pdata_files
+                END
+                CRT SPACE(2):'It is not, so create as a DICT level file'
+            END
+            create_cmd = 'CREATE.FILE DICT ':dict_file:mod_sep
+            OPEN 'DICT', dict_file TO F.THERE THEN
+                IF verbose > 1 THEN
+                    CRT SPACE(3):'Already there, no need to create file'
+                END
+                CLEARFILE F.THERE
+                CLOSE F.THERE
+            END ELSE
+                READ existing_voc FROM F.VOCMD,dict_file THEN
+                    IF existing_voc<1>[1,1] = 'F' THEN
+                        DELETE F.VOCMD,dict_file
+                    END ELSE
+                        CRT
+                        CRT 'VOC exists for ':dict_file:' and is not a F-pointer'
+                        CRT
+                        CRT 'Process aborted!'
+                        CRT
+                        STOP
+                    END
+                END
+                EXECUTE create_cmd CAPTURING nada
+                IF verbose THEN
+                    CRT SPACE(3):' ':create_cmd
+                END
+                IF verbose > 1 THEN
+                    CRT SPACE(3):nada
+                END
+            END
+        END
+    NEXT dict_count
+    FOR data_count = 1 TO last_data
+        data_file = data_files<1,data_count>
+        IF verbose > 1 THEN
+            CRT SPACE(2):'Creating DICT and DATA file for ':data_file
+        END
+        OPEN 'DATA', data_file TO F.THERE THEN
+            IF verbose > 1 THEN
+                CRT SPACE(3):'Already there, no need to create file'
+            END
+            CLEARFILE F.THERE
+            CLOSE F.THERE
+        END ELSE
+            READ existing_voc FROM F.VOCMD,data_file THEN
+                IF existing_voc<1>[1,1] = 'F' THEN
+                    DELETE F.VOCMD,data_file
+                END ELSE
+                    CRT
+                    CRT 'VOC exists for ':data_file:' and is not a F-pointer'
+                    CRT
+                    CRT 'Process aborted!'
+                    CRT
+                    STOP
+                END
+            END
+            BEGIN CASE
+                CASE data_file = 'STATES'
+                    BEGIN CASE
+                        CASE platform = 'UV' OR platform = 'UV.PE'
+                            create_cmd = 'CREATE.FILE STATES 1'
+                        CASE platform = 'UD' OR platform = 'UD.PE'
+                            create_cmd = 'CREATE.FILE DIR STATES'
+                        CASE platform = 'JBASE'
+                            create_cmd = 'CREATE.FILE STATES TYPE=UD'
+                        CASE platform = 'QM'
+                            create_cmd = 'CREATE.FILE STATES DIRECTORY'
+                    END CASE
+                CASE 1
+                    create_cmd = 'CREATE.FILE ':data_file:mod_sep
+            END CASE
+            EXECUTE create_cmd CAPTURING nada
+            IF verbose THEN
+                CRT SPACE(3):' ':create_cmd
+            END
+            IF verbose > 1 THEN
+                CRT SPACE(3):nada
+            END
+        END
+    NEXT data_count
+*
+*** Populate files
+*
+    IF verbose THEN
+        CRT 'Populating files ...'
+    END
+    dict_data = 'DICT'
+    FOR dict_count = 1 TO last_dict
+        tab_file = dict_files<1,dict_count>
+        file_name = OCONV(tab_file,'MCU')
+        tab_file := '_dict.tab'
+        GOSUB EXTRACTDATA
+    NEXT dict_count
+*
+*** COMPILE.DICT again if errors (Could be dependent on other file)
+*
+    FOR compile_count = 1 TO 5 UNTIL NOT(INDEX(dict_files<2>,'1',1))
+        FOR dict_count = 1 TO last_dict
+            file_name = OCONV(dict_files<1,dict_count>,'MCU')
+            IF dict_files<2,dict_count> THEN
+                EXECUTE 'COMPILE.DICT ':file_name CAPTURING nada
+                IF verbose > 1 THEN
+                    CRT 'COMPILE.DICT ':file_name:' again'
+                    last_msg = DCOUNT(nada,@AM)
+                    FOR msg_count = 1 TO last_msg
+                        CRT nada<msg_count>
+                    NEXT msg_count
+                END
+                IF NOT(INDEX(nada,'error',1)) THEN
+                    dict_files<2,dict_count> = ''
+                END
+            END
+        NEXT dict_count
+    NEXT compile_count
+    dict_data = 'DATA'
+    FOR data_count = 1 TO last_data
+        tab_file = data_files<1,data_count>
+        file_name = OCONV(tab_file,'MCU')
+        tab_file := '_data.tab'
+        GOSUB EXTRACTDATA
+    NEXT data_count
+*
+*** Remove WEBUSERS VOC item for lesson 2
+*
+    DELETE F.VOCMD,'WEBUSERS'
+*
+*** Exit program
+*
+    mvtutor_status = load_update:' ':TIMEDATE()
+    WRITE mvtutor_status ON F.VOCMD,'MVTUTOR_STATUS'
+    STOP
+*
+EXTRACTDATA:
+*
+    OPEN dict_data,file_name TO F.MV ELSE
+        CRT
+        CRT 'Cannot open "':dict_data:' ':file_name:'".  aborted!'
+        CRT
+        ABORT
+    END
+    IF verbose THEN
+        CRT SPACE(3):' ':dict_data:' ':file_name
+    END
+    record_count = 0 ; seq_counter = 0
+    OPENSEQ tab_file TO F.DATA THEN
+        LOOP
+            READSEQ data_line FROM F.DATA ELSE EXIT
+            record_count += 1
+            IF record_count > 5000 AND platform = 'QM' THEN
+                EXIT          ;* QM Personal edition limits data
+            END
+            R.MV = data_line
+            IF dict_data = 'DICT' AND FIELD(data_line,CHAR(9),2)[1,1] = 'I' THEN
+                R.MV = OCONV(R.MV,'G0':CHAR(9):'8')         ;* TRUNCATE I-DESCRIPTORS SO THEY CAN COMPILE
+            END
+            CONVERT CHAR(13) TO '' IN R.MV
+*
+*** Remove embedded quotes
+*
+            LOOP
+                quote_index = INDEX(R.MV,'"',1)
+            WHILE quote_index DO
+                BEGIN CASE
+                    CASE R.MV[quote_index-1,1] = CHAR(9) OR R.MV[quote_index+1,1] = CHAR(9)
+                        R.MV = R.MV[1,quote_index-1]:R.MV[quote_index+1,99999]
+                    CASE R.MV[quote_index-1,1] = '"' OR R.MV[quote_index+1,1] = '"'
+                        R.MV = R.MV[1,quote_index-1]:R.MV[quote_index+1,99999]
+                    CASE 1
+                        R.MV = R.MV[1,quote_index-1]:CHAR(8):R.MV[quote_index+1,99999]
+                END CASE
+            REPEAT
+            CONVERT CHAR(8) TO '"' IN R.MV
+*
+*** Change back to MV delimiters
+*
+            CONVERT CHAR(9) TO @AM IN R.MV
+            CONVERT '~' TO @VM IN R.MV
+            CONVERT '`' TO @SM IN R.MV
+*
+*** Extract ID
+*
+            data_id = R.MV<1>
+            IF data_id = '##' THEN
+                seq_counter += 1
+                data_id = seq_counter
+            END
+            IF LEN(data_id) THEN
+                DEL R.MV<1>
+                WRITE R.MV ON F.MV,data_id
+            END
+        REPEAT
+    END
+    CLOSE F.MV
+    IF dict_data = 'DICT' AND platform # 'JBASE' THEN
+        EXECUTE 'COMPILE.DICT ':file_name CAPTURING nada
+        IF INDEX(nada,'error',1) THEN
+            dict_files<2,dict_count> = 1
+        END
+        IF verbose > 1 THEN
+            CRT 'COMPILE.DICT ':file_name
+            last_msg = DCOUNT(nada,@AM)
+            FOR msg_count = 1 TO last_msg
+                CRT nada<msg_count>
+            NEXT msg_count
+        END
+    END
+    RETURN

@@ -1,0 +1,15 @@
+* Open the ZIPS dictionary and select each key
+    OPEN "DICT","ZIPS" TO ZIPS.FILE ELSE
+        CRT
+        CRT "Could not OPEN file ZIPS"
+        STOP
+    END
+    FOR field_number = 1 TO 15
+* Read the record into ZIPS.RECORD
+        READ ZIPS.RECORD FROM ZIPS.FILE, 'F':field_number THEN
+* Create a the new DICT name from the header in field 4
+            zip_header = ZIPS.RECORD<4>
+* Write the record with an uppercase header.
+            WRITE ZIPS.RECORD TO ZIPS.FILE, UPCASE(zip_header)
+        END
+    NEXT field_number

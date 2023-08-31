@@ -1,0 +1,5 @@
+@	PH	STATEID NAME ID.SUP					
+@ID	D Default record ID for RetrieVe	0		STATES	10L	S
+@SELECT	PH	STATEID NAME ID.SUP					
+NAME	D	1		State Name	15L	S		
+STATEID	D	0		ID	2L	S		

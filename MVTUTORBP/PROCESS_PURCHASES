@@ -1,0 +1,111 @@
+    PROMPT ''
+    EXECUTE 'GET-LIST PURCHASES'
+    IF NOT(SYSTEM(11)) THEN
+        CRT
+        CRT 'No SAVE.LIST PURCHASES available'
+        CRT
+        STOP
+    END
+    OPEN 'PRODUCTS' TO F.PRODUCTS ELSE
+        CRT
+        CRT 'Cannot open PRODUCTS file'
+        CRT
+        STOP
+    END
+    OPEN 'VENDORS' TO F.VENDORS ELSE
+        CRT
+        CRT 'Cannot open VENDORS file'
+        CRT
+        STOP
+    END
+    CRT 'We need to order:'
+    report = 'PRODUCTS..    Class.....    Name................    Description...................'
+    report := ' Quantity needed'
+    CRT
+    LOOP
+        READNEXT products_id ELSE EXIT
+        READ R.PRODUCTS FROM F.PRODUCTS,products_id ELSE CONTINUE
+        class       = R.PRODUCTS<3>
+        name        = R.PRODUCTS<2>
+        description = R.PRODUCTS<4>
+        warn        = R.PRODUCTS<8>
+        qoh         = R.PRODUCTS<7>
+        to_order    = warn - qoh
+        vendors     = R.PRODUCTS<1>
+        last_vendor = DCOUNT(vendors,@VM)
+        report<-1> = ' ' ;* blank line between
+        report<-1> = products_id'L#13':' ':class'L#13':' ':name'L#23':' ':description'L#30':' ':to_order'R#15'
+        FOR vendor_count = 1 TO last_vendor WHILE to_order
+            LOOP
+                vendor_id = vendors<1,vendor_count>
+                READ R.VENDORS FROM F.VENDORS,vendor_id ELSE R.VENDORS = ''
+                vendor_name = R.VENDORS<1>
+                address     = R.VENDORS<2>
+                city        = R.VENDORS<3>
+                state       = R.VENDORS<4>
+                zip         = R.VENDORS<5>
+                contact     = R.VENDORS<6>
+                email       = R.VENDORS<7>
+                CRT @(-1):    ;* Clear screen
+                CRT 'PRODUCTS..    Class.....    Name................    Description...................'
+                CRT
+                CRT products_id'L#13':' ':class'L#13':' ':name'L#23':' ':description'L#30'
+                CRT
+                CRT 'We need at least: ':warn:' - ':qoh:' = ':to_order
+                CRT
+                CRT 'Try to order ':to_order
+                CRT
+                CRT 'Vendor (':vendor_count:' of ':last_vendor:')'
+                CRT 'Vendor ID... ':vendor_id
+                READ R.VENDORS FROM F.VENDORS,vendor_id ELSE R.VENDORS = ''
+                CRT 'Vendor Name. ':vendor_name
+                CRT 'Address..... ':address
+                CRT 'City........ ':city
+                CRT 'State....... ':state
+                CRT 'Zip......... ':zip
+                CRT 'Contact..... ':contact
+                CRT 'email....... ':email
+                CRT
+                CRT 'Were you successful?'
+                CRT '(Y) Yes, all are now in a purchase order'
+                CRT '(N) No, none were purchased. Go to next vendor or product'
+                CRT '(P) Partially, how many did you purchase? ___ (numeric), Go to next vendor or product'
+                CRT '(Q) Quit'
+                CRT 'Y/N/P/Q? ':
+                INPUT y_n_p_q
+                y_n_p_q = UPCASE(y_n_p_q)
+            UNTIL y_n_p_q = 'Y' OR y_n_p_q = 'N' OR y_n_p_q = 'P' OR y_n_p_q = 'Q' DO
+            REPEAT
+            BEGIN CASE
+                CASE y_n_p_q = 'Q'
+                    STOP
+                CASE y_n_p_q = 'Y'
+                    vendor_qty = to_order
+                    report<-1> = SPACE(4):vendor_id'L#10':' ':vendor_name'L#30':' ':city'L#30':' purchase ':vendor_qty'R#12'
+                    to_order = 0
+                CASE y_n_p_q = 'N'
+                    vendor_qty = 0
+                    report<-1> = SPACE(4):vendor_id'L#10':' ':vendor_name'L#30':' ':city'L#30':' purchase ':vendor_qty'R#12'
+                CASE y_n_p_q = 'P'
+                    CRT 'Partial Quantity : ':
+                    INPUT vendor_qty
+                    IF NOT(NUM(vendor_qty)) THEN vendor_qty = to_order + 1      ;* error for non-numeric
+                    IF INT(vendor_qty) # vendor_qty THEN vendor_qty = to_order + 1        ;* Error if not integer
+                    IF vendor_qty > to_order THEN
+                        vendor_count -= 1
+                    END ELSE
+                        to_order = to_order - vendor_qty
+                        report<-1> = SPACE(4):vendor_id'L#10':' ':vendor_name'L#30':' ':city'L#30':' purchase ':vendor_qty'R#12'
+                    END
+            END CASE
+        NEXT vendor_count
+    REPEAT
+    EXECUTE 'DELETE-LIST PURCHASES'
+    last_report = DCOUNT(report,@AM)
+    CRT
+    CRT 'Press <Enter> for report'
+    INPUT press_enter
+    CRT
+    FOR report_line = 1 TO last_report
+        CRT report<report_line>
+    NEXT report_line

@@ -1,0 +1,135 @@
+!
+! 2022 Rocket Software, Inc. or its affiliates. All Rights Reserved.
+! ROCKET SOFTWARE, INC. CONFIDENTIAL
+!
+    command_line = @SENTENCE
+    in_state = FIELD(command_line,' ',2)
+    in_state = OCONV(in_state,'MCU')
+    IF in_state # 'ALL' AND NOT(in_state MATCHES '2A') THEN
+        in_state = 'TX'
+    END
+    CRT
+    CRT 'Loading zip codes for ':in_state
+    CRT
+    OPEN 'ZIPS' TO F.ZIPS ELSE
+        CRT
+        CRT 'No ZIPS file.  Aborted!'
+        CRT
+        STOP
+    END
+    OPEN 'DICT','ZIPS' TO F.DZIPS ELSE
+        CRT
+        CRT 'No DICT ZIPS file.  Aborted!'
+        CRT
+        STOP
+    END
+    platform = SYSTEM(9010)
+    OPEN 'CSVFILES' TO F.CSVFILES ELSE
+        CRT
+        CRT 'Cannot OPEN file .\CSVFILES'
+        CRT
+        STOP
+    END
+    READ R.CSV FROM F.CSVFILES,'zip_code_database.csv' ELSE
+        CRT
+        CRT 'Cannot read zip_code_database.csv from CSVFILES file'
+        CRT
+        STOP
+    END
+    dict_sms = ''
+    last_line = DCOUNT(R.CSV,@AM)
+    FOR line_count = 1 TO last_line
+        csv_line = R.CSV<line_count>
+        GOSUB CSV2AM
+    NEXT line_count
+    READ R.DICT FROM F.DZIPS,'F1' ELSE
+        GOSUB DODICT
+    END
+*
+*** Exit program
+*
+    CRT
+    CRT 'Load complete!'
+    CRT
+    STOP
+*
+CSV2AM:
+*
+    am_line = '' ; prev_char_value = ''
+    char_count = LEN(csv_line)
+    FOR char_pos = 1 TO char_count
+        char_value = csv_line[char_pos,1]
+        next_char_value = csv_line[char_pos+1,1]
+        BEGIN CASE
+            CASE char_value = '"' AND next_char_value = '"'
+                prev_char_value = '"'
+                char_pos += 1
+            CASE char_value = '"' AND next_char_value = ','
+                prev_char_value = @AM
+                char_pos += 1
+            CASE char_value = '"'
+                prev_char_value = ''
+            CASE char_value = ',' AND prev_char_value = @AM
+                prev_char_value = @AM
+            CASE 1
+                prev_char_value = char_value
+        END CASE
+        am_line := prev_char_value
+    NEXT char_pos
+    zip_id = am_line<1>
+    IF zip_id MATCHES '5N' THEN
+        R.ZIPS = am_line
+        DEL R.ZIPS<1>
+        state = R.ZIPS<5>
+        IF state = in_state OR in_state = 'ALL' THEN        ;* Only load Texas for now
+            FOR mv_test = 1 TO 15
+                IF INDEX(R.ZIPS<mv_test>,',',1) THEN
+                    comma_data = R.ZIPS<mv_test>
+                    trim_comma_data = TRIM(comma_data)
+                    last_char = trim_comma_data[LEN(trim_comma_data),1]
+                    IF last_char = ',' THEN       ;* comma without more data (bogus)
+                        comma_count = COUNT(comma_data,',')
+                        comma_data = OCONV(comma_data,'G0,':comma_count)
+                    END
+                    LOOP
+                        comma_index = INDEX(comma_data,', ',1)
+                    WHILE comma_index DO
+* remove embedded spaces
+                        comma_data = comma_data[1,comma_index]:comma_data[comma_index+2,LEN(comma_data)]
+                    REPEAT
+                    CONVERT ',' TO @VM IN comma_data
+                    R.ZIPS<mv_test> = comma_data
+                END
+                IF INDEX(R.ZIPS<mv_test>,@VM,1) THEN
+                    dict_sms<mv_test> = 'M'
+                END
+            NEXT mv_test
+            WRITE R.ZIPS ON F.ZIPS,zip_id
+        END
+    END
+    RETURN
+*
+DODICT:
+*
+    dict_headings = "type":@AM:"primary_city":@AM:"acceptable_cities":@AM:"unacceptable_cities":@AM:"state":@AM:"county":@AM:"timezone":@AM:"area_codes":@AM:"latitude":@AM:"longitude":@AM:"world_region":@AM:"country":@AM:"decommissioned":@AM:"estimated_population":@AM:"notes"
+    dict_formats = "10L":@AM:"25L":@AM:"25L":@AM:"25L":@AM:"2L":@AM:"15L":@AM:"20L":@AM:"15L":@AM:"10R":@AM:"10R":@AM:"2L":@AM:"2L":@AM:"1R":@AM:"10R":@AM:"25L"
+*
+    FOR field_number = 1 TO 15
+        R.DZIPS = 'D'
+        R.DZIPS<2> = field_number
+        R.DZIPS<4> = dict_headings<field_number>
+        R.DZIPS<5> = dict_formats<field_number>
+        IF dict_sms<field_number> = 'M' THEN
+            R.DZIPS<6> = 'M'
+        END ELSE
+            R.DZIPS<6> = 'S'
+        END
+        WRITE R.DZIPS ON F.DZIPS,'F':field_number
+    NEXT field_number
+    R.DZIPS = 'I'
+    R.DZIPS<2> = ' "lat " : @RECORD<9>:" x long " : @RECORD<10>'
+    R.DZIPS<4> = 'GPS Location'
+    R.DZIPS<5> = '25L'
+    WRITE R.DZIPS ON F.DZIPS,'GPS'
+    RETURN
+

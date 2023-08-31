@@ -1,0 +1,40 @@
+    DIM F.FILES(13)
+    MAT F.FILES = ''
+    OPEN 'DICT','VOCLIB' TO F.DVOCLIB ELSE STOP 201,'DICT VOCLIB'
+    R.DVOCLIB = 'I'
+    R.DVOCLIB<2> = 'OCONV(@ID,"T1,2");IF NUM(@1) THEN @1 + "0" ELSE "13"; IF @2 < "1" OR @2 > "12" THEN "13" ELSE @2'
+    R.DVOCLIB<4> = 'Part #'
+    R.DVOCLIB<5> = '5R'
+    WRITE R.DVOCLIB ON F.DVOCLIB,'ORD.PART.ALG'
+    EXECUTE 'COMPILE.DICT VOCLIB ORD.PART.ALG'
+    EXECUTE 'DEFINE.DF ALLORDERS'
+    EXECUTE 'DEFINE.DF ALLORDERS INTERNAL VOCLIB ORD.PART.ALG'
+    OPEN 'NODATEORDERS' TO F.FILES(13) ELSE
+        EXECUTE 'CREATE-FILE NODATEORDERS 3 59 64BIT'
+        OPEN 'NODATEORDERS' TO F.FILES(13) ELSE STOP 201,'NODATEORDERS'
+        EXECUTE 'DEFINE.DF ALLORDERS ADDING NODATEORDERS 13 INTERNAL VOCLIB ORD.PART.ALG'
+    END
+    OPEN 'ORDERS' TO F.ORDERS ELSE STOP 201,'ORDERS'
+    FOR month = 1 TO 12
+        alpha = OCONV(ICONV(month'R%2':'/01/01','D'),'DMA':@VM:'MCU')[1,3]
+        OPEN alpha:'ORDERS' TO F.FILES(month) ELSE
+            EXECUTE 'CREATE-FILE ':alpha:'ORDERS 3 59 64BIT'
+            OPEN alpha:'ORDERS' TO F.FILES(month) ELSE STOP 201,alpha:'ORDERS'
+            EXECUTE 'DEFINE.DF ALLORDERS ADDING ':alpha:'ORDERS ':month:' INTERNAL VOCLIB ORD.PART.ALG'
+        END
+    NEXT month
+    SELECT F.ORDERS
+    LOOP
+        READNEXT ordid ELSE EXIT
+        READ R.ORDERS FROM F.ORDERS,ordid ELSE CONTINUE
+        month = OCONV(R.ORDERS<1>,'DM')'R%2'
+        IF NOT(NUM(month)) THEN
+            month = 13
+        END ELSE
+            IF month+0 # INT(month+0) OR month < 1 OR month > 12 THEN
+                month = 13
+            END
+        END
+        newid = month:ordid
+        WRITE R.ORDERS ON F.FILES(month),newid
+    REPEAT

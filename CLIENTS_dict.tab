@@ -1,0 +1,16 @@
+@	PH	FIRST_NAME LAST_NAME CITY STATE ADDRESS ADDRESS2 ZIP COUNTRY COMPANY																		
+@ID	D Default record ID for RetrieVe	0		CLIENTS	10L	S														
+@SELECT	PH	COMPANY FIRST_NAME LAST_NAME ADDRESS CITY STATE ZIP COUNTRY																		
+ADDRESS	D	5		Address	35L	M														
+ADDRESS2	D	6			30T	S														
+CITY	D	3		City	20L	S														
+CLIENTID	D	0		Client ID	5R	S														
+COMPANY	D	9		Company	30L	S														
+COUNTRY	D	8		Country	15L	S														
+FIRST_NAME	D	1		First Name	15L	S														
+LAST_NAME	D	2		Last Name	15L	S														
+NAME	I	"FIRST_NAME:"" "":LAST_NAME"		Full Name	25L	S										1~0~6~8~0~44~112~1	16495	33980	-1394429696~17	`
+SOUNDS_LIKE	I	SOUNDEX(LAST_NAME)		Sounds Like	30T	S										1~0~3~5~0~26~64~0	16859	31872	-1394429696~17	`
+STATE	D	4		State	2L	S														
+STATE_NAME	I	"TRANS(STATES,STATE,1,""X"")"		State Name	25L	S										1~0~6~8~0~32~112~7	16495	33980	-1394429696~17	`
+ZIP	D	7		ZIP	7L	S														

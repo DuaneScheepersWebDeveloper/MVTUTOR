@@ -1,0 +1,9 @@
+@	PH	SKU DESC BUYER SIZE COLOR QOH ID.SUP DBL.SPC						
+@ID	D Default record ID for RetrieVe	0		INVENTORY	10L	S
+BUYER	D	2		Buyer	15L	S		
+COLOR	D	4		Color	8R	M	INV	
+DESC	D	1		Description	20L	S		
+INV	PH	SIZE COLOR QOH						
+QOH	D	5	MD0	QOH	3R	M	INV	
+SIZE	D	3		Size	4L	M	INV	
+SKU	D	0		SKU	4L	S		

@@ -1,0 +1,147 @@
+    PROMPT ''
+    platform = SYSTEM(9010)
+    OPEN '','CUSTOMERS' TO F.CUSTOMERS ELSE
+        CRT
+        CRT 'Cannot open CUSTOMERS file'
+        CRT
+        STOP
+    END
+    OPEN '','TEST' TO F.TEST THEN
+        CRT
+        CRT 'You have to DELETE.FILE TEST to use this utility'
+        CRT
+        STOP
+    END
+*
+*** Ask number of items
+*
+    LOOP
+        CRT
+        CRT 'Enter number of items to create : ':
+        INPUT record_count
+        IF record_count = '' THEN
+            CRT
+            CRT 'None created'
+            CRT
+            STOP
+        END
+    UNTIL record_count MATCHES '1N0N' DO
+    REPEAT
+    BEGIN CASE
+        CASE record_count < 10
+           CRT
+           CRT 'Must specify at least 10'
+           CRT
+           STOP
+        CASE record_count < 99
+            dot_quantity = 1
+        CASE record_count <= 100
+            dot_quantity = 10
+        CASE record_count <= 1000
+            dot_quantity = 100
+        CASE record_count <= 10000
+            dot_quantity = 1000
+        CASE 1
+            dot_quantity = 10000
+    END CASE
+*
+*** account for delimiters
+*
+    BEGIN CASE
+        CASE platform = 'UV'
+            delimiter_size = '30'       ;* @am after ID  and other overhead
+        CASE platform = 'UD'
+            delimiter_size = '3'        ;* @am after ID and @AM and EOF at bottom
+        CASE 1
+            CRT 'Not supported on ':platform
+            STOP
+    END CASE
+*
+*** Take sampling from CUSTOMERS
+*
+    total_size = 0
+    cust_count = 0
+    DIM R.CUST(10) ; MAT R.CUST = ''
+    EXECUTE 'SSELECT CUSTOMERS' CAPTURING nada
+    LOOP
+        READNEXT cust_id ELSE EXIT
+        cust_count += 1
+    UNTIL cust_count = 11 DO
+        READ R.CUST(cust_count) FROM F.CUSTOMERS,cust_id ELSE NULL
+        total_size += LEN(R.CUST(cust_count)) + LEN(cust_id)  + delimiter_size
+    REPEAT
+    average_size = INT(total_size/10) + 1
+    CLEARSELECT
+*
+*** Show how TEST file will be created
+*
+    CRT
+    CRT 'With an average of ':average_size:' bytes per item and ':record_count:' items...'
+    CRT 'Calculated using the item character size + the primary key + ':delimiter_size:' for system delmiters'
+    CRT
+    CRT average_size:' X ':record_count:' = ':average_size * record_count
+    guess_modulo = INT(average_size * record_count / 4000)
+    CRT
+    CRT 'Divide that by 4000 and you get about ':guess_modulo
+    CRT
+    CRT 'So, we will use this to create the TEST file'
+    CRT
+    file_modulo = guess_modulo
+    IF file_modulo/2 = INT(file_modulo/2) THEN
+        file_modulo += 1      ;* Not even
+        CRT
+        CRT 'It is divisible by 2, so add 1 and get ':file_modulo
+    END
+    IF file_modulo[LEN(file_modulo),1] = 5 THEN
+        file_modulo += 2      ;* Not divisible by 5
+        CRT
+        CRT 'That is divisible by 5, so add 2 and get ':file_modulo
+    END
+    BEGIN CASE
+        CASE platform = 'UV'
+            CRT
+            CRT 'On Universe, generally type 3 files are used and most modern computers work best with'
+            CRT 'a frame size of 4,096 which is why the 8 (times default of 512).  We also should create'
+            CRT '64BIT files on modern 64 bit computers.'
+            create_file_command = 'CREATE.FILE TEST 3 ':file_modulo:' 8 64BIT'
+        CASE platform = 'UD'
+            CRT
+            CRT 'On Unidata, the default file type will be used for most hashed files, however modern computers'
+            CRT 'work best with a frame size of 4,096 which is why the ,4 (times default of 1024).  We also should'
+            CRT 'create 64BIT files on modern 64 bit computers.'
+            create_file_command = 'CREATE.FILE TEST ':file_modulo:',4 64BIT'
+        CASE 1
+            CRT 'Not supported on ':platform
+            STOP
+    END CASE
+    CRT
+    CRT create_file_command
+    EXECUTE create_file_command
+    CRT
+    OPEN '','TEST' TO F.TEST ELSE
+        CRT
+        CRT 'Could not create the TEST file.   Aborted.'
+        CRT
+        STOP
+    END
+*
+*** Add as records to TEST file
+*
+    cust_rec = 0
+    CRT
+    CRT 'Adding the ':record_count:' items to the file.  One dot per ':dot_quantity
+    CRT
+    FOR new_id = 1 TO record_count
+        IF new_id/dot_quantity = INT(new_id/dot_quantity) THEN
+            CRT '.':
+        END
+        cust_rec += 1
+        IF cust_rec = 11 THEN cust_rec = 1
+        WRITE R.CUST(cust_rec) ON F.TEST,new_id
+    NEXT new_id
+    CRT
+    CRT
+    CRT 'Press any key to see the file statistics for the new TEST file using FILE.STAT TEST'
+    INPUT any_key,1
+    EXECUTE 'FILE.STAT TEST'
+

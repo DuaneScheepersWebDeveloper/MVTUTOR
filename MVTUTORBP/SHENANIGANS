@@ -1,0 +1,7 @@
+OPEN 'JOKES' TO F.JOKES ELSE
+   CRT
+   CRT 'Cannot OPEN file JOKES'
+   CRT
+   STOP
+END
+CRT 'Haha'
